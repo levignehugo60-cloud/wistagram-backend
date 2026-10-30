@@ -40,7 +40,7 @@ app.post("/api/chat", async (req, res) => {
 
     const response = await groq.chat.completions.create({
       messages: apiMessages,
-      model: "llama-3.3-70b-versatile"
+      model: "openai/gpt-oss-120b"
     });
 
     const aiResponseText = response.choices[0]?.message?.content || "Wesh j'ai eu un bug, réessaie.";
