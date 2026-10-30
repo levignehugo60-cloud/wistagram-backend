@@ -1,4 +1,4 @@
-
+```js
 require("dotenv").config();
 
 const express = require("express");
@@ -52,6 +52,7 @@ app.post("/api/chat", async (req, res) => {
         : [];
 
     // Vérifier et normaliser les anciens messages
+    // On conserve tout l'historique fourni par le frontend.
     const formattedHistory = conversationHistory
       .filter((m) =>
         m &&
@@ -62,8 +63,7 @@ app.post("/api/chat", async (req, res) => {
       .map((m) => ({
         role: m.role,
         content: (m.content ?? m.text).trim(),
-      }))
-      .slice(-30);
+      }));
 
     const apiMessages = [
       SYSTEM_PROMPT,
@@ -100,3 +100,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Serveur Wisty en ligne sur le port ${PORT}`);
 });
+```
