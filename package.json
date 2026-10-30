@@ -1,3 +1,4 @@
+
 {
   "name": "wistagram-backend",
   "description": "Serveur Backend Wisty pour Wistagram",
@@ -9,7 +10,7 @@
     "cors": "^2.8.6",
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
-    "groq-sdk": "^1.6.0"
+    "groq-sdk": "^1.6.0",
     "firebase-admin": "^13.0.0"
   },
   "private": true
