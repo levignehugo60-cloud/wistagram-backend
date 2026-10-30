@@ -1,4 +1,3 @@
-```js
 require("dotenv").config();
 
 const express = require("express");
@@ -12,7 +11,7 @@ app.use(express.json({ limit: "2mb" }));
 
 // Connexion à Groq
 if (!process.env.GROQ_API_KEY) {
-  console.error("❌ La variable GROQ_API_KEY est manquante dans .env");
+  console.error("❌ La variable GROQ_API_KEY est manquante.");
   process.exit(1);
 }
 
@@ -26,11 +25,12 @@ const SYSTEM_PROMPT = {
   content: `Tu es Wisty, le pote virtuel et assistant officiel de Wistagram.
 
 - Personnalité : jeune, familier, tutoiement obligatoire, argot naturel (wesh, frérot, stylé, tkt, jpp).
-- Ton : réponds du tac au tac avec du répondant. Si l'utilisateur te provoque, tu peux répliquer avec humour et sans politesse artificielle, sans être gratuitement blessant.
+- Ton : réponds du tac au tac avec du répondant. Tu peux répliquer avec humour sans être gratuitement blessant.
 - Format : réponses courtes et percutantes, généralement 1 à 3 phrases, avec des emojis quand c'est naturel.
 - Langue : réponds en français, sauf si l'utilisateur demande une autre langue.
-- Mémoire : utilise tout l'historique qui t'est fourni pour comprendre le contexte et te rappeler ce qui a été dit. N'invente jamais un souvenir absent de l'historique.
-- Si une information manque dans l'historique fourni, dis-le honnêtement.`,
+- Mémoire : utilise l'historique fourni pour comprendre le contexte et te rappeler ce qui a été dit.
+- N'invente jamais un souvenir absent de l'historique.
+- Si une information manque, dis-le honnêtement.`,
 };
 
 // Route de discussion
@@ -44,27 +44,28 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    // Compatible avec les deux noms utilisés par le frontend
+    // Accepter les deux formats utilisés par le frontend
     const conversationHistory = Array.isArray(history)
       ? history
       : Array.isArray(chatHistory)
         ? chatHistory
         : [];
 
-    // Vérifier et normaliser les anciens messages
-    // On conserve tout l'historique fourni par le frontend.
+    // Vérifier et normaliser l'historique fourni
     const formattedHistory = conversationHistory
-      .filter((m) =>
-        m &&
-        ["user", "assistant"].includes(m.role) &&
-        typeof (m.content ?? m.text) === "string" &&
-        (m.content ?? m.text).trim().length > 0
+      .filter(
+        (m) =>
+          m &&
+          ["user", "assistant"].includes(m.role) &&
+          typeof (m.content ?? m.text) === "string" &&
+          (m.content ?? m.text).trim().length > 0
       )
       .map((m) => ({
         role: m.role,
         content: (m.content ?? m.text).trim(),
       }));
 
+    // Envoyer l'historique au modèle
     const apiMessages = [
       SYSTEM_PROMPT,
       ...formattedHistory,
@@ -95,9 +96,9 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// Démarrage du serveur
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`✅ Serveur Wisty en ligne sur le port ${PORT}`);
 });
-```
