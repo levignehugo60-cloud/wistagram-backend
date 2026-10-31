@@ -9,33 +9,39 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Configuration du serveur
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-// Vérification de la configuration
+// Vérification de la clé Groq
 if (!process.env.GROQ_API_KEY) {
-  console.error("ERREUR : la variable GROQ_API_KEY est absente.");
+  console.error(
+    "ERREUR : la variable GROQ_API_KEY est absente de l'environnement."
+  );
 }
 
-// Initialisation de Groq
+// Initialisation du client Groq
 const groq = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null;
 
-// Modèles utilisés : modèle principal puis solution de secours
-const PRIMARY_MODEL = "llama-3.3-70b-versatile";
-const FALLBACK_MODEL = "llama-3.1-8b-instant";
+// Modèles Groq
+const PRIMARY_MODEL = "openai/gpt-oss-120b";
+const FALLBACK_MODEL = "openai/gpt-oss-20b";
 
+// Instructions de Wisty
 const SYSTEM_PROMPT = `
 Tu es Wisty, l'assistant officiel de Wistagram.
-Tu es sympa, dynamique, utile et naturel.
-Réponds en français si l'utilisateur écrit en français.
-Réponds directement à la demande de l'utilisateur.
-Produis une réponse en texte simple, sans format JSON imposé.
-N'invente pas de faits lorsque tu ne connais pas la réponse.
+
+Tu es sympa, dynamique, naturel et utile.
+Tu réponds en français lorsque l'utilisateur écrit en français.
+Tu adaptes tes réponses à la question de l'utilisateur.
+Tu privilégies des réponses claires et faciles à comprendre.
+Tu réponds en texte simple, sans imposer de format JSON.
+Si tu ne connais pas une information, tu le dis honnêtement.
 `.trim();
 
-// Route de santé : permet de vérifier si le serveur démarre
+// Vérifier que le serveur fonctionne
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "ok",
@@ -43,7 +49,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// Appel à un modèle Groq
+// Créer une réponse avec un modèle Groq
 async function generateReply(model, message, history) {
   const completion = await groq.chat.completions.create({
     model,
@@ -71,35 +77,40 @@ async function generateReply(model, message, history) {
   return reply.trim();
 }
 
-// Route de discussion
+// Route de discussion de Wisty
 app.post("/api/chat", async (req, res) => {
   try {
+    // Vérifier la configuration Groq
     if (!groq) {
       return res.status(503).json({
-        error: "Le service Wisty n'est pas configuré.",
+        error: "Wisty n'est pas configuré correctement.",
         code: "missing_groq_api_key",
       });
     }
 
+    // Vérifier le message reçu
     const body = req.body || {};
+
     const message =
-      typeof body.message === "string" ? body.message.trim() : "";
+      typeof body.message === "string"
+        ? body.message.trim()
+        : "";
 
     if (!message) {
       return res.status(400).json({
-        error: "Écris un message avant d'envoyer.",
+        error: "Le message est vide ou invalide.",
         code: "empty_message",
       });
     }
 
     if (message.length > 4000) {
       return res.status(400).json({
-        error: "Ton message est trop long (maximum 4000 caractères).",
+        error: "Le message ne peut pas dépasser 4000 caractères.",
         code: "message_too_long",
       });
     }
 
-    // Ne conserver que les messages user/assistant valides.
+    // Préparer l'historique de conversation
     const rawHistory = Array.isArray(body.chatHistory)
       ? body.chatHistory
       : [];
@@ -118,10 +129,15 @@ app.post("/api/chat", async (req, res) => {
         content: item.content.trim().slice(0, 4000),
       }));
 
+    // Essayer d'abord le modèle principal
     let reply;
 
     try {
-      reply = await generateReply(PRIMARY_MODEL, message, history);
+      reply = await generateReply(
+        PRIMARY_MODEL,
+        message,
+        history
+      );
     } catch (primaryError) {
       console.error("Échec du modèle principal :", {
         status: primaryError.status,
@@ -129,38 +145,60 @@ app.post("/api/chat", async (req, res) => {
         message: primaryError.message,
       });
 
-      // Un second modèle est essayé si le premier échoue.
-      reply = await generateReply(FALLBACK_MODEL, message, history);
+      // Ne pas masquer les erreurs de configuration/authentification
+      // en réessayant inutilement un second modèle.
+      if (
+        primaryError.status === 401 ||
+        primaryError.status === 403
+      ) {
+        throw primaryError;
+      }
+
+      // Essayer le modèle de secours
+      reply = await generateReply(
+        FALLBACK_MODEL,
+        message,
+        history
+      );
     }
 
-    return res.status(200).json({ reply });
+    // Renvoyer la réponse au frontend
+    return res.status(200).json({
+      reply,
+    });
   } catch (error) {
-    const status = error.status;
-    const code = error.code;
-
     console.error("Erreur Wisty :", {
-      status,
-      code,
+      status: error.status,
+      code: error.code,
       message: error.message,
     });
 
-    if (status === 401 || status === 403) {
+    if (error.status === 401 || error.status === 403) {
       return res.status(502).json({
-        error: "Le service IA a refusé la requête. Vérifie la configuration de Groq.",
+        error:
+          "Le service IA a refusé la requête. Vérifie la clé Groq et les accès du compte.",
         code: "ai_service_auth_error",
       });
     }
 
-    if (status === 429) {
+    if (error.status === 429) {
       return res.status(503).json({
         error: "Wisty est très sollicité. Réessaie dans un instant.",
         code: "ai_rate_limit",
       });
     }
 
+    if (error.status === 404) {
+      return res.status(502).json({
+        error:
+          "Le modèle Groq demandé est introuvable ou inaccessible. Vérifie les identifiants des modèles.",
+        code: "model_not_found",
+      });
+    }
+
     return res.status(502).json({
       error: "Wisty n'a pas réussi à générer une réponse.",
-      code: code || "ai_generation_error",
+      code: error.code || "ai_generation_error",
     });
   }
 });
@@ -173,7 +211,7 @@ app.use((req, res) => {
   });
 });
 
-// Gestion des erreurs JSON mal formé
+// Gestion des erreurs JSON et erreurs inattendues
 app.use((error, req, res, next) => {
   if (error instanceof SyntaxError && "body" in error) {
     return res.status(400).json({
@@ -194,6 +232,7 @@ app.use((error, req, res, next) => {
   });
 });
 
+// Démarrer le serveur
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Serveur Wisty démarré sur le port ${PORT}`);
 });
